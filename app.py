@@ -28,8 +28,11 @@ def callback():
         abort(400)
     return 'OK'
 
-@handler.add(MessageEvent, message_content_type=ImageMessageContent)
-def handle_image(event):
+@handler.add(MessageEvent)
+def handle_message(event):
+    if not isinstance(event.message, ImageMessageContent):
+        return
+
     with ApiClient(configuration) as api_client:
         blob_api = MessagingApiBlob(api_client)
         image_bytes = blob_api.get_message_content(message_id=event.message.id)
@@ -41,7 +44,7 @@ def handle_image(event):
     2. Hãy tự động nhân/gán đơn giá đó cho từng dòng tương ứng.
     3. Giữ cấu trúc rõ ràng, xuất ra văn bản thuần để tôi dễ copy.
     """
-    
+
     image_parts = [{"mime_type": "image/jpeg", "data": image_bytes}]
     response = model.generate_content([prompt, image_parts[0]])
     extracted_text = response.text if response.text else "Không thể đọc được ảnh."
