@@ -52,21 +52,21 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén và thu nhỏ ảnh để tránh tràn RAM trên Render Free Tier
+                # Nén và thu nhỏ ảnh để tối ưu dung lượng và tốc độ
                 img = Image.open(BytesIO(image_bytes))
-                img.thumbnail((1024, 1024))
+                img.thumbnail((800, 800))
                 output = BytesIO()
-                img.save(output, format="JPEG", quality=85)
+                img.save(output, format="JPEG", quality=75)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt ép buộc giữ nguyên số 0 ở đầu và tách biệt rõ ràng từng dòng ngang
+                # Prompt đọc theo từng cột từ trên xuống dưới
                 prompt = (
-                    "Hãy đọc các dòng trong hóa đơn từ trên xuống dưới theo từng hàng ngang riêng biệt.\n"
-                    "QUY TẮC:\n"
-                    "1. Giữ nguyên hoàn toàn định dạng số có số 0 ở đầu (ví dụ: bắt buộc giữ '01', '02', '03', không được tự ý đổi thành '1', '2', '3').\n"
-                    "2. Mỗi dòng ngang trên hóa đơn phải được in trên một dòng riêng biệt trong kết quả, định dạng theo kiểu: [các số trên hàng ngang] x [đơn giá].\n"
-                    "3. Dòng cuối cùng ghi tổng cộng dạng: Tổng cộng: [số tiền].\n"
-                    "4. TUYỆT ĐỐI KHÔNG viết lời dẫn, không chào hỏi, không gộp chung tất cả các dòng lại thành một đoạn văn dài."
+                    "Hãy đọc các số viết tay trong bảng hóa đơn theo thứ tự TỪ TRÊN XUỐNG DƯỚI CHO TỪNG CỘT (Đọc hết cột trái từ trên xuống dưới, sau đó đọc cột giữa từ trên xuống dưới, cuối cùng đọc cột phải từ trên xuống dưới).\n"
+                    "QUY TẮC BẮT BUỘC:\n"
+                    "1. Bắt buộc giữ nguyên định dạng các số có số 0 ở đầu (như 01, 02, 03, không được tự ý bỏ số 0).\n"
+                    "2. Nối tất cả các số đọc được thành một danh sách cách nhau bởi dấu phẩy, cuối danh sách ghi 'x [đơn giá]' (ví dụ: số1, số2, số3, ... x 40).\n"
+                    "3. Dòng 'Tổng cộng:': Hãy lấy chính xác con số tổng viết tay ở ô 合計 dưới cùng tờ giấy (ví dụ: 1200 hoặc 44.000). Đây là tổng tiền các đơn giá, TUYỆT ĐỐI KHÔNG TÍNH PHÉP NHÂN.\n"
+                    "4. QUY TẮC TUYỆT ĐỐI: Không viết lời dẫn, không chào hỏi, không ghi chữ thừa."
                 )
 
                 response = ai_client.models.generate_content(
