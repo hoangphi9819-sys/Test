@@ -59,11 +59,13 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=85)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt đã được tối ưu để chỉ lấy chữ/số viết tay
+                # Prompt gom nhóm chuẩn theo ý bạn
                 prompt = (
-                    "Chỉ trích xuất các phần chữ và số viết tay có trong ảnh. "
-                    "Bỏ qua toàn bộ các chữ in sẵn (như 估價單, 品名, 數量, 單價, 金額, 合計...). "
-                    "Trình bày kết quả dưới dạng bảng hoặc danh sách gọn gàng chỉ gồm dữ liệu viết tay."
+                    "Đọc các số liệu viết tay trong bảng và gom nhóm theo mẫu sau: "
+                    "- Các số lượng dùng chung đơn giá nào hãy gom lại dạng: [các số lượng] x [đơn giá] "
+                    "- Liệt kê danh sách các giá trị thành tiền viết tay tương ứng. "
+                    "- Dòng cuối cùng ghi tổng cộng chính xác theo hóa đơn. "
+                    "Tuyệt đối bỏ qua chữ in sẵn, chỉ lấy chữ và số viết tay."
                 )
 
                 response = ai_client.models.generate_content(
