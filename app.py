@@ -59,11 +59,11 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=85)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt linh hoạt giúp đọc chuẩn các dòng số lượng x đơn giá viết tay
+                # Prompt gom nhóm theo đơn giá và cấm mọi lời dẫn rườm rà
                 prompt = (
-                    "Hãy đọc toàn bộ các phép tính dạng số lượng nhân đơn giá (ví dụ: số x số) được viết tay trong bảng từ trên xuống dưới. "
-                    "Bỏ qua hoàn toàn các chữ in sẵn. "
-                    "Chỉ trả về danh sách các dòng phép tính viết tay đó (mỗi dòng một phép tính rõ ràng), và dòng cuối cùng ghi tổng tiền nếu có."
+                    "Hãy đọc ảnh hóa đơn, gom nhóm các số lượng có cùng chung đơn giá theo từng mức giá dạng: số1, số2 x đơn_giá. "
+                    "Dòng cuối cùng ghi tổng cộng dạng: Tổng cộng: [số tiền]. "
+                    "QUY TẮC TUYỆT ĐỐI: Không viết bất kỳ lời dẫn, không chào hỏi, không thêm tiêu đề hay giải thích nào khác. Chỉ xuất ra thẳng các dòng gom nhóm và tổng cộng."
                 )
 
                 response = ai_client.models.generate_content(
