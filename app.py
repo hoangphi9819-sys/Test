@@ -53,7 +53,7 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén ảnh nhẹ hơn để gửi siêu nhanh (600x600, quality 65)
+                # Nén ảnh nhẹ hơn để gửi nhanh (600x600, quality 65)
                 img = Image.open(BytesIO(image_bytes))
                 img.thumbnail((600, 600))
                 output = BytesIO()
@@ -70,14 +70,13 @@ def handle_message(event):
                     "5. QUY TẮC TUYỆT ĐỐI: Không viết lời chào, lời dẫn hay giải thích thừa."
                 )
 
-                # Sử dụng Part.from_bytes đúng chuẩn của SDK google-genai
                 image_part = genai.types.Part.from_bytes(
                     data=compressed_image_bytes,
                     mime_type='image/jpeg'
                 )
 
                 response = ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.6-flash',
                     contents=[image_part, prompt]
                 )
 
