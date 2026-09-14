@@ -1,4 +1,5 @@
 import os
+import time
 from io import BytesIO
 from PIL import Image
 from flask import Flask, request, abort
@@ -75,12 +76,24 @@ def handle_message(event):
                     mime_type='image/jpeg'
                 )
 
-                response = ai_client.models.generate_content(
-                    model='gemini-3.6-flash',
-                    contents=[image_part, prompt]
-                )
+                # Cơ chế tự động thử lại khi gặp lỗi 503 quá tải
+                response = None
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = ai_client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=[image_part, prompt]
+                        )
+                        break
+                    except Exception as err:
+                        if "503" in str(err) and attempt < max_retries - 1:
+                            time.sleep(2)  # Thử lại sau 2 giây
+                            continue
+                        else:
+                            raise err
 
-                extracted_text = response.text if response.text else "Không thể đọc được dữ liệu từ ảnh."
+                extracted_text = response.text if (response and response.text) else "Không thể đọc được dữ liệu từ ảnh."
 
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
