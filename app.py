@@ -52,25 +52,25 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén ảnh tối ưu dung lượng
+                # Nén ảnh tối ưu dung lượng và tốc độ xử lý
                 img = Image.open(BytesIO(image_bytes))
                 img.thumbnail((800, 800))
                 output = BytesIO()
                 img.save(output, format="JPEG", quality=75)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt thông minh xử lý đa dạng hóa đơn & sổ tay
+                # Prompt tổng hợp tất cả quy tắc đọc ảnh chuẩn xác
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ dữ liệu chữ và số viết tay trong ảnh theo các quy tắc sau:\n"
                     "1. BẮT BUỘC giữ nguyên các số 0 đằng trước (ví dụ: 01, 02, 03, không được tự ý đổi thành 1, 2, 3).\n"
-                    "2. Nếu là dạng bảng liệt kê số lượng gom chung đơn giá (ví dụ gom theo x 40): Hãy đọc lần lượt từng cột từ trên xuống dưới, liệt kê các số phân cách bằng dấu phẩy và kết thúc bằng 'x [đơn giá]'.\n"
+                    "2. Nếu là dạng bảng gom chung đơn giá (như gom x 40): Hãy đọc theo thứ tự TỪ TRÊN XUỐNG DƯỚI CHO TỪNG CỘT (Đọc hết cột trái từ trên xuống, rồi đến cột giữa từ trên xuống, rồi đến cột phải từ trên xuống). Nối các số phân cách bằng dấu phẩy và kết thúc bằng 'x [đơn giá]'.\n"
                     "3. Nếu là dạng sổ ghi chép có chữ hoặc phép tính riêng từng dòng (như 'Đề', 'Đầu 1 x 100', 'Đít 1 x 100'): Hãy xuống dòng và ghi lại chính xác nội dung từng dòng từ trên xuống dưới.\n"
-                    "4. Dòng cuối cùng: Lấy chính xác con số tổng viết tay tại ô 合計 hoặc ở góc dưới cùng tờ giấy (ghi dạng: Tổng cộng: [số tiền]).\n"
-                    "5. QUY TẮC TUYỆT ĐỐI: Không ghi bất kỳ lời chào, lời dẫn hay giải thích nào khác."
+                    "4. Dòng 'Tổng cộng:': Lấy chính xác con số tổng viết tay tại ô 合計 hoặc ở góc dưới cùng tờ giấy (ví dụ: 1200 hoặc 4000). Đây là tổng đơn giá cộng lại, TUYỆT ĐỐI KHÔNG TÍNH PHÉP NHÂN.\n"
+                    "5. QUY TẮC TUYỆT ĐỐI: Không viết lời chào, lời dẫn hay giải thích thừa."
                 )
 
                 response = ai_client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-2.5-flash',
                     contents=[
                         genai.types.Part.from_bytes(
                             data=compressed_image_bytes,
