@@ -1,4 +1,6 @@
 import os
+from io import BytesIO
+from PIL import Image
 from flask import Flask, request, abort
 from google import genai
 from linebot.v3 import WebhookHandler
@@ -15,7 +17,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Khởi tạo client Gemini theo SDK chuẩn mới nhất
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 @app.route("/", methods=['GET'])
@@ -51,14 +52,20 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
+                # Nén và thu nhỏ ảnh để tránh tràn RAM trên Render Free Tier
+                img = Image.open(BytesIO(image_bytes))
+                img.thumbnail((1024, 1024))
+                output = BytesIO()
+                img.save(output, format="JPEG", quality=85)
+                compressed_image_bytes = output.getvalue()
+
                 prompt = "Hãy đọc ảnh hóa đơn/sổ tay này và trích xuất tất cả các dòng dữ liệu một cách rõ ràng, chính xác."
 
-                # Sử dụng đúng tên model gemini-3.6-flash theo yêu cầu hệ thống
                 response = ai_client.models.generate_content(
                     model='gemini-3.6-flash',
                     contents=[
                         genai.types.Part.from_bytes(
-                            data=image_bytes,
+                            data=compressed_image_bytes,
                             mime_type='image/jpeg'
                         ),
                         prompt
