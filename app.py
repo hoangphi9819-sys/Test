@@ -32,39 +32,40 @@ def callback():
         abort(400)
     return 'OK'
 
-# Phản hồi khi người dùng gửi chữ/tin nhắn văn bản
-@handler.add(MessageEvent, message_content_type=TextMessageContent)
-def handle_text(event):
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text="Tôi đã nhận được tin nhắn! Hãy gửi cho tôi 1 tấm ảnh hóa đơn/sổ tay để đọc dữ liệu nhé.")]
+# Lắng nghe tất cả MessageEvent
+@handler.add(MessageEvent)
+def handle_message(event):
+    # Nếu là tin nhắn văn bản
+    if isinstance(event.message, TextMessageContent):
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="Tôi đã nhận được tin nhắn! Hãy gửi cho tôi 1 tấm ảnh hóa đơn/sổ tay để đọc dữ liệu nhé.")]
+                )
             )
-        )
 
-# Phản hồi khi người dùng gửi ảnh
-@handler.add(MessageEvent, message_content_type=ImageMessageContent)
-def handle_image(event):
-    with ApiClient(configuration) as api_client:
-        blob_api = MessagingApiBlob(api_client)
-        line_bot_api = MessagingApi(api_client)
-        
-        image_bytes = blob_api.get_message_content(message_id=event.message.id)
+    # Nếu là tin nhắn hình ảnh
+    elif isinstance(event.message, ImageMessageContent):
+        with ApiClient(configuration) as api_client:
+            blob_api = MessagingApiBlob(api_client)
+            line_bot_api = MessagingApi(api_client)
+            
+            image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-        prompt = """Hãy đọc ảnh này và xuất văn bản thuần túy giữ nguyên cấu trúc toán học."""
+            prompt = """Hãy đọc ảnh này và xuất văn bản thuần túy giữ nguyên cấu trúc toán học."""
 
-        image_parts = [{"mime_type": "image/jpeg", "data": image_bytes}]
-        response = model.generate_content([prompt, image_parts[0]])
-        extracted_text = response.text if response.text else "Không thể đọc được ảnh."
+            image_parts = [{"mime_type": "image/jpeg", "data": image_bytes}]
+            response = model.generate_content([prompt, image_parts[0]])
+            extracted_text = response.text if response.text else "Không thể đọc được ảnh."
 
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=extracted_text)]
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=extracted_text)]
+                )
             )
-        )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
