@@ -17,6 +17,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# Khởi tạo client Gemini
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 @app.route("/", methods=['GET'])
@@ -52,14 +53,14 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén ảnh tối ưu dung lượng và tốc độ xử lý
+                # Nén ảnh nhẹ hơn để gửi siêu nhanh (600x600, quality 65)
                 img = Image.open(BytesIO(image_bytes))
-                img.thumbnail((800, 800))
+                img.thumbnail((600, 600))
                 output = BytesIO()
-                img.save(output, format="JPEG", quality=75)
+                img.save(output, format="JPEG", quality=65)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt tổng hợp tất cả quy tắc đọc ảnh
+                # Prompt tổng hợp tất cả quy tắc đọc ảnh chuẩn xác
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ dữ liệu chữ và số viết tay trong ảnh theo các quy tắc sau:\n"
                     "1. BẮT BUỘC giữ nguyên các số 0 đằng trước (ví dụ: 01, 02, 03, không được tự ý đổi thành 1, 2, 3).\n"
@@ -69,15 +70,15 @@ def handle_message(event):
                     "5. QUY TẮC TUYỆT ĐỐI: Không viết lời chào, lời dẫn hay giải thích thừa."
                 )
 
+                # Sử dụng Part.from_bytes đúng chuẩn của SDK google-genai
+                image_part = genai.types.Part.from_bytes(
+                    data=compressed_image_bytes,
+                    mime_type='image/jpeg'
+                )
+
                 response = ai_client.models.generate_content(
-                    model='gemini-flash-latest',
-                    contents=[
-                        genai.types.Part.from_bytes(
-                            data=compressed_image_bytes,
-                            mime_type='image/jpeg'
-                        ),
-                        prompt
-                    ]
+                    model='gemini-2.5-flash',
+                    contents=[image_part, prompt]
                 )
 
                 extracted_text = response.text if response.text else "Không thể đọc được dữ liệu từ ảnh."
