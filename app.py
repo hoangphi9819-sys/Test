@@ -59,11 +59,14 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=85)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt gom nhóm theo đơn giá và cấm mọi lời dẫn rườm rà
+                # Prompt ép buộc giữ nguyên số 0 ở đầu và tách biệt rõ ràng từng dòng ngang
                 prompt = (
-                    "Hãy đọc ảnh hóa đơn, gom nhóm các số lượng có cùng chung đơn giá theo từng mức giá dạng: số1, số2 x đơn_giá. "
-                    "Dòng cuối cùng ghi tổng cộng dạng: Tổng cộng: [số tiền]. "
-                    "QUY TẮC TUYỆT ĐỐI: Không viết bất kỳ lời dẫn, không chào hỏi, không thêm tiêu đề hay giải thích nào khác. Chỉ xuất ra thẳng các dòng gom nhóm và tổng cộng."
+                    "Hãy đọc các dòng trong hóa đơn từ trên xuống dưới theo từng hàng ngang riêng biệt.\n"
+                    "QUY TẮC:\n"
+                    "1. Giữ nguyên hoàn toàn định dạng số có số 0 ở đầu (ví dụ: bắt buộc giữ '01', '02', '03', không được tự ý đổi thành '1', '2', '3').\n"
+                    "2. Mỗi dòng ngang trên hóa đơn phải được in trên một dòng riêng biệt trong kết quả, định dạng theo kiểu: [các số trên hàng ngang] x [đơn giá].\n"
+                    "3. Dòng cuối cùng ghi tổng cộng dạng: Tổng cộng: [số tiền].\n"
+                    "4. TUYỆT ĐỐI KHÔNG viết lời dẫn, không chào hỏi, không gộp chung tất cả các dòng lại thành một đoạn văn dài."
                 )
 
                 response = ai_client.models.generate_content(
