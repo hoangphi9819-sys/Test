@@ -59,7 +59,7 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=75)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt tổng hợp tất cả quy tắc đọc ảnh chuẩn xác
+                # Prompt tổng hợp tất cả quy tắc đọc ảnh
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ dữ liệu chữ và số viết tay trong ảnh theo các quy tắc sau:\n"
                     "1. BẮT BUỘC giữ nguyên các số 0 đằng trước (ví dụ: 01, 02, 03, không được tự ý đổi thành 1, 2, 3).\n"
@@ -70,7 +70,7 @@ def handle_message(event):
                 )
 
                 response = ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-flash-latest',
                     contents=[
                         genai.types.Part.from_bytes(
                             data=compressed_image_bytes,
