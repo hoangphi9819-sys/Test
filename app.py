@@ -59,13 +59,11 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=85)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt ép chuẩn định dạng gọn gàng theo yêu cầu
+                # Prompt linh hoạt giúp đọc chuẩn các dòng số lượng x đơn giá viết tay
                 prompt = (
-                    "Chỉ trích xuất các số liệu viết tay và trả về kết quả theo ĐÚNG định dạng rút gọn sau, tuyệt đối không thêm tiêu đề, nhãn, hay chữ tiếng Trung nào khác:\n"
-                    "- Dòng 1: Gom nhóm các số lượng theo đơn giá 200 (ví dụ: 73, 75, 77, 79 x 200)\n"
-                    "- Dòng 2: Gom nhóm các số lượng theo đơn giá 100 (ví dụ: 83, 85, 87, 89, 95, 97 x 100)\n"
-                    "- Dòng 3: Gom nhóm danh sách thành tiền nhân 100 (ví dụ: 25, 29, 37, 38, 39 x 100)\n"
-                    "- Dòng cuối: Tổng cộng: [số tiền]"
+                    "Hãy đọc toàn bộ các phép tính dạng số lượng nhân đơn giá (ví dụ: số x số) được viết tay trong bảng từ trên xuống dưới. "
+                    "Bỏ qua hoàn toàn các chữ in sẵn. "
+                    "Chỉ trả về danh sách các dòng phép tính viết tay đó (mỗi dòng một phép tính rõ ràng), và dòng cuối cùng ghi tổng tiền nếu có."
                 )
 
                 response = ai_client.models.generate_content(
