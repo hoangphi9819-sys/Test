@@ -15,7 +15,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Khởi tạo client Gemini theo SDK mới
+# Khởi tạo client Gemini theo SDK chuẩn mới nhất
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 @app.route("/", methods=['GET'])
@@ -51,10 +51,11 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                prompt = "Hãy đọc ảnh này và xuất văn bản thuần túy giữ nguyên cấu trúc toán học."
+                prompt = "Hãy đọc ảnh hóa đơn/sổ tay này và trích xuất tất cả các dòng dữ liệu một cách rõ ràng, chính xác."
 
+                # Sử dụng đúng tên model gemini-3.6-flash theo yêu cầu hệ thống
                 response = ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.6-flash',
                     contents=[
                         genai.types.Part.from_bytes(
                             data=image_bytes,
@@ -64,7 +65,7 @@ def handle_message(event):
                     ]
                 )
 
-                extracted_text = response.text if response.text else "Không thể đọc được ảnh."
+                extracted_text = response.text if response.text else "Không thể đọc được dữ liệu từ ảnh."
 
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -76,7 +77,7 @@ def handle_message(event):
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text=f"Lỗi: {str(e)}")]
+                        messages=[TextMessage(text=f"Lỗi xử lý ảnh: {str(e)}")]
                     )
                 )
 
