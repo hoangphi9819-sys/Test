@@ -37,16 +37,11 @@ def callback():
 
 @handler.add(MessageEvent)
 def handle_message(event):
+    # Bỏ qua tin nhắn dạng chữ (Bot im lặng, không trả lời)
     if isinstance(event.message, TextMessageContent):
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="Tôi đã nhận được tin nhắn! Hãy gửi cho tôi 1 tấm ảnh hóa đơn/sổ tay để đọc dữ liệu nhé.")]
-                )
-            )
+        return
 
+    # Chỉ xử lý khi tin nhắn là hình ảnh
     elif isinstance(event.message, ImageMessageContent):
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
@@ -76,13 +71,13 @@ def handle_message(event):
                     mime_type='image/jpeg'
                 )
 
-                # Danh sách các mô hình ưu tiên thử nghiệm
+                # Cơ chế tự động chọn model và thử lại
                 models_to_try = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
                 response = None
                 last_error = None
 
                 for model_name in models_to_try:
-                    for attempt in range(2): # Thử lại tối đa 2 lần cho mỗi model nếu dính lỗi 503
+                    for attempt in range(2):
                         try:
                             response = ai_client.models.generate_content(
                                 model=model_name,
