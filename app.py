@@ -59,7 +59,12 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=85)
                 compressed_image_bytes = output.getvalue()
 
-                prompt = "Hãy đọc ảnh hóa đơn/sổ tay này và trích xuất tất cả các dòng dữ liệu một cách rõ ràng, chính xác."
+                # Prompt đã được tối ưu để chỉ lấy chữ/số viết tay
+                prompt = (
+                    "Chỉ trích xuất các phần chữ và số viết tay có trong ảnh. "
+                    "Bỏ qua toàn bộ các chữ in sẵn (như 估價單, 品名, 數量, 單價, 金額, 合計...). "
+                    "Trình bày kết quả dưới dạng bảng hoặc danh sách gọn gàng chỉ gồm dữ liệu viết tay."
+                )
 
                 response = ai_client.models.generate_content(
                     model='gemini-3.6-flash',
