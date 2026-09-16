@@ -75,7 +75,7 @@ def callback():
 def handle_message(event):
     group_id = getattr(event.source, 'group_id', None) or getattr(event.source, 'user_id', 'default_user')
 
-    # 1. XỬ LÝ KHI GÕ LỆNH TỔNG CHỮ
+    # 1. XỬ LÝ KHI GÕ LỆNH TỔNG CHỮ OR TAG BOT
     if isinstance(event.message, TextMessageContent):
         text_msg = event.message.text.lower().strip()
         
@@ -105,7 +105,7 @@ def handle_message(event):
     # 2. XỬ LÝ KHI GỬI HÌNH ẢNH
     elif isinstance(event.message, ImageMessageContent):
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi, Blob_api = MessagingApiBlob(api_client)
+            line_bot_api = MessagingApi(api_client)
             try:
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
@@ -116,15 +116,13 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=65)
                 compressed_image_bytes = output.getvalue()
 
-                # PROMPT TỐI ƯU ĐỌC THEO DÒNG NGANG & LOẠI BỎ CHỮ CỘT TIẾNG TRUNG
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
                     "1. Giữ nguyên các số 0 ở đầu nếu có (ví dụ: 01, 02...).\n"
-                    "2. ĐỌC THEO DÒNG NGANG (Từ trái sang phải): Ghép tất cả các thông tin viết tay trên cùng 1 dòng thành 1 câu/phép tính hoàn chỉnh (ví dụ: Lô 43 x 5 = 1300). CẤM phân tách thành các danh sách kiểu 'Cột 品名', 'Cột 數量', 'Cột 單價'.\n"
-                    "3. Nếu là dạng bảng gom danh sách số gom chung đơn giá (ví dụ 01, 02... x 50): Hãy đọc theo từng cột từ trên xuống dưới.\n"
-                    "4. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
-                    "   TỔNG: [Số tiền tổng kết quả của cả bức ảnh]\n"
-                    "5. Không viết lời chào hay giải thích thừa."
+                    "2. ĐỌC THEO DÒNG NGANG (Từ trái sang phải): Ghép tất cả các thông tin viết tay trên cùng 1 dòng thành 1 câu/phép tính hoàn chỉnh (ví dụ: Lô 26 x 5 = 1300). CẤM phân tách thành danh sách kiểu 'Cột 品名', 'Cột 數量'.\n"
+                    "3. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
+                    "   TỔNG: [Số tiền tổng của cả bức ảnh]\n"
+                    "4. Không viết lời chào hay giải thích thừa."
                 )
 
                 image_part = genai.types.Part.from_bytes(
