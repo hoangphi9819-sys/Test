@@ -110,17 +110,18 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
+                # Nén ảnh nhẹ (550x550, quality=50) giúp truyền dữ liệu siêu tốc
                 img = Image.open(BytesIO(image_bytes))
-                img.thumbnail((700, 700))
+                img.thumbnail((550, 550))
                 output = BytesIO()
-                img.save(output, format="JPEG", quality=65)
+                img.save(output, format="JPEG", quality=50)
                 compressed_image_bytes = output.getvalue()
 
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
                     "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
                     "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục.\n"
-                    "3. QUY TẮC ĐỀ GOM: Nếu gặp dạng như 'Đề 45, 54 = 100k' hoặc '45-54=100k', hiểu là TỔNG TIỀN CỦA CÁC SỐ ĐÓ LÀ 100k (không tự ý tính nhân nhân lên thành 200k).\n"
+                    "3. QUY TẮC ĐỀ GOM: Nếu gặp dạng như 'Đề 45, 54 = 100k' hoặc '45-54=100k', hiểu là TỔNG TIỀN CỦA CÁC SỐ ĐÓ LÀ 100k (không tự ý tính nhân lên thành 200k).\n"
                     "4. Giữ nguyên số 0 đằng trước nếu có (01, 02...).\n"
                     "5. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
                     "   TỔNG: [Số tiền tổng của cả bức ảnh]\n"
