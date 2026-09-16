@@ -22,7 +22,7 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Thread pool xử lý song song để reply_token không bị hết hạn
+# Thread pool xử lý song song để tránh hết hạn reply_token
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 
 # DATABASE LƯU SỐ TIỀN CỦA CÁC ẢNH
@@ -84,20 +84,19 @@ def process_single_image(message_id, reply_token, group_id):
             
             image_bytes = blob_api.get_message_content(message_id=message_id)
 
-            # Nén ảnh nhẹ để truyền tải cực nhanh
             img = Image.open(BytesIO(image_bytes))
             img.thumbnail((500, 500))
             output = BytesIO()
             img.save(output, format="JPEG", quality=40)
             compressed_image_bytes = output.getvalue()
 
-            # PROMPT ĐỌC NGUYÊN BẢN 100%
             prompt_text = (
-                "Hãy trích xuất chính xác toàn bộ chữ và số viết tay xuất hiện trong ảnh theo các quy tắc:\n"
-                "1. GHI NGUYÊN BẢN: Trên giấy có chữ gì, ký tự gì, phép tính gì thì ghi ra ĐÚNG 100% NHƯ VẬY. KHÔNG tự ý suy luận, KHÔNG đổi chữ viết tắt thành từ đầy đủ, KHÔNG tự thêm bớt từ.\n"
-                "2. BỎ HOÀN TOÀN ngày tháng năm ở đầu tờ giấy (nếu có).\n"
-                "3. DÒNG CUỐI CÙNG BẮT BUỘC: Nếu trong ảnh có con số tổng kết quả (ví dụ 1800, 215...) thì ghi dòng cuối dạng 'TỔNG: [con số đó]'. Nếu không có, hãy tự cộng tổng các giá trị tiền trong ảnh và ghi 'TỔNG: [con số]'.\n"
-                "4. Không viết lời chào hay bất kỳ văn bản giải thích nào thêm."
+                "Hãy trích xuất toàn bộ chữ/số viết tay trong ảnh theo đúng các quy tắc:\n"
+                "1. GHI NGUYÊN BẢN: Trong ảnh viết sao thì ghi ra chính xác như vậy. KHÔNG tự suy luận, KHÔNG đổi chữ viết tắt, KHÔNG thêm bớt chữ.\n"
+                "2. QUY TẮC DẤU GẠCH DỌC NỐI XUỐNG: Khi thấy đường gạch dọc (nét sổ thẳng dọc xuống) kéo từ một con số/giá tiền ở dòng trên xuống các dòng bên dưới (ví dụ từ số 100 gạch dọc xuống dòng 20 X, 89 X...), hãy hiểu tất cả các dòng được gạch nối đó ĐỀU MANG CÙNG GIÁ TRỊ/SỐ TIỀN của dòng ở trên để ghi nhận phép tính và tính tổng.\n"
+                "3. BỎ HOÀN TOÀN ngày tháng năm ở đầu tờ giấy.\n"
+                "4. DÒNG CUỐI CÙNG BẮT BUỘC: Ghi đúng định dạng 'TỔNG: [con số tổng]'. Ưu tiên lấy con số tổng có sẵn ở cuối trang (như 1300, 1800...).\n"
+                "5. Không viết lời chào hay giải thích thừa."
             )
 
             response = ai_client.models.generate_content(
@@ -164,7 +163,7 @@ def handle_message(event):
                 )
         return
 
-    # 2. XỬ LÝ GỬI HÌNH ẢNH (CHẠY SONG SONG TRÁNH QUÁ HẠN REPLY TOKEN)
+    # 2. XỬ LÝ GỬI HÌNH ẢNH
     elif isinstance(event.message, ImageMessageContent):
         executor.submit(process_single_image, event.message.id, event.reply_token, group_id)
 
