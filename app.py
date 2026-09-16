@@ -105,26 +105,25 @@ def handle_message(event):
     # 2. XỬ LÝ KHI GỬI HÌNH ẢNH
     elif isinstance(event.message, ImageMessageContent):
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
+            line_bot_api = MessagingApi, Blob_api = MessagingApiBlob(api_client)
             try:
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén ảnh 700x700 để chữ rõ nét hơn nhưng dung lượng vẫn nhẹ
                 img = Image.open(BytesIO(image_bytes))
                 img.thumbnail((700, 700))
                 output = BytesIO()
                 img.save(output, format="JPEG", quality=65)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt nới lỏng thời gian suy luận giúp AI đọc nhanh < 4 giây
+                # PROMPT TỐI ƯU ĐỌC THEO DÒNG NGANG & LOẠI BỎ CHỮ CỘT TIẾNG TRUNG
                 prompt = (
-                    "Hãy đọc và phân tích dữ liệu trong ảnh theo các quy tắc:\n"
-                    "1. Giữ nguyên số 0 ở đầu nếu có (01, 02...).\n"
-                    "2. Trích xuất theo thứ tự từng cột từ trên xuống dưới (đọc xong cột 1 rồi mới sang cột 2, cột 3).\n"
-                    "3. Lấy con số viết tay tại ô 合計 (Tổng cộng) ở góc dưới tờ giấy để làm tổng tiền.\n"
+                    "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
+                    "1. Giữ nguyên các số 0 ở đầu nếu có (ví dụ: 01, 02...).\n"
+                    "2. ĐỌC THEO DÒNG NGANG (Từ trái sang phải): Ghép tất cả các thông tin viết tay trên cùng 1 dòng thành 1 câu/phép tính hoàn chỉnh (ví dụ: Lô 43 x 5 = 1300). CẤM phân tách thành các danh sách kiểu 'Cột 品名', 'Cột 數量', 'Cột 單價'.\n"
+                    "3. Nếu là dạng bảng gom danh sách số gom chung đơn giá (ví dụ 01, 02... x 50): Hãy đọc theo từng cột từ trên xuống dưới.\n"
                     "4. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
-                    "   TỔNG: [Số tiền lấy từ ô 合計 hoặc tổng cộng các mục]\n"
+                    "   TỔNG: [Số tiền tổng kết quả của cả bức ảnh]\n"
                     "5. Không viết lời chào hay giải thích thừa."
                 )
 
