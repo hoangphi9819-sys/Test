@@ -20,7 +20,7 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- KHỞI TẠO DATABASE ĐỂ LƯU SỐ TIỀN CÁC ẢNH ---
+# KHỞI TẠO DATABASE LƯU SỐ TIỀN CÁC ẢNH
 def init_db():
     conn = sqlite3.connect('totals.db')
     c = conn.cursor()
@@ -51,7 +51,6 @@ def get_and_clear_total(group_id):
     amounts = [r[0] for r in rows]
     total_sum = sum(amounts)
     
-    # Tính xong thì xóa dữ liệu nhóm này để chờ đợt tính mới
     c.execute("DELETE FROM group_totals WHERE group_id = ?", (group_id,))
     conn.commit()
     conn.close()
@@ -74,14 +73,12 @@ def callback():
 
 @handler.add(MessageEvent)
 def handle_message(event):
-    # Lấy ID của nhóm chat hoặc người dùng
     group_id = getattr(event.source, 'group_id', None) or getattr(event.source, 'user_id', 'default_user')
 
-    # 1. XỬ LÝ TIN NHẮN CHỮ (CHỈ PHẢN HỒI KHI RA LỆNH TỔNG)
+    # 1. XỬ LÝ KHI GÕ LỆNH TỔNG CHỮ
     if isinstance(event.message, TextMessageContent):
         text_msg = event.message.text.lower().strip()
         
-        # Kiểm tra nếu người dùng gọi bot hoặc gõ các từ khóa tổng tiền
         if "tổng" in text_msg or "tong" in text_msg or "@" in text_msg:
             amounts, total_sum = get_and_clear_total(group_id)
             with ApiClient(configuration) as api_client:
@@ -119,14 +116,15 @@ def handle_message(event):
                 img.save(output, format="JPEG", quality=55)
                 compressed_image_bytes = output.getvalue()
 
-                # Prompt yêu cầu AI trả về dòng TỔNG: [con số] ở cuối để dễ trích xuất
+                # PROMPT ĐÃ ĐƯỢC CỦNG CỐ KHÔNG TÍNH TỔNG LẺ CỘT
                 prompt = (
-                    "Hãy phân tích ảnh và tính toán theo các quy tắc:\n"
-                    "1. Giữ số 0 ở đầu nếu có.\n"
-                    "2. Thực hiện phép tính cộng/trừ/nhân trên tờ giấy.\n"
-                    "3. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
-                    "   Ghi chính xác: 'TỔNG: [số tiền kết quả]'\n"
-                    "4. Không viết lời chào hay giải thích thừa."
+                    "Hãy đọc và phân tích dữ liệu trong ảnh theo các quy tắc:\n"
+                    "1. Giữ nguyên số 0 ở đầu nếu có (01, 02...).\n"
+                    "2. Trích xuất chính xác chi tiết từng dòng hoặc từng cột theo thứ tự từ trên xuống dưới.\n"
+                    "3. TUYỆT ĐỐI KHÔNG ghi 'Tổng cột 1', 'Tổng cột 2' hay cộng tổng riêng từng phần.\n"
+                    "4. Chỉ tính tổng toàn bộ các số tiền trên bức ảnh và kết thúc BẮT BUỘC ở dòng cuối cùng theo dạng:\n"
+                    "   TỔNG: [Tổng số tiền của cả bức ảnh]\n"
+                    "5. Không viết lời chào hay giải thích thừa."
                 )
 
                 image_part = genai.types.Part.from_bytes(
@@ -141,7 +139,7 @@ def handle_message(event):
 
                 extracted_text = response.text if (response and response.text) else ""
 
-                # Trích xuất con số tổng từ kết quả của AI để lưu vào DB
+                # Trích xuất tổng tiền cả bức ảnh để lưu vào DB
                 match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
                 if match:
                     sub_total = float(match.group(1))
