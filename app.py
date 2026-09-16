@@ -1,8 +1,7 @@
 import os
 import re
 import sqlite3
-import queue
-import threading
+import concurrent.futures
 from io import BytesIO
 from PIL import Image
 from flask import Flask, request, abort
@@ -23,9 +22,10 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# HÀNG ĐỢI XỬ LÝ ẢNH CHUẨN THỨ TỰ
-task_queue = queue.Queue()
+# Thread pool xử lý song song để reply_token không bị hết hạn
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 
+# DATABASE LƯU SỐ TIỀN CỦA CÁC ẢNH
 def init_db():
     conn = sqlite3.connect('totals.db')
     c = conn.cursor()
@@ -76,79 +76,68 @@ def callback():
         abort(400)
     return 'OK'
 
-# WORKER AN TOÀN - KHÔNG BAO GIỜ BỊ DỪNG HOẠT ĐỘNG
-def queue_worker():
-    while True:
-        task = task_queue.get()
-        if task is None:
-            break
-        
-        try:
-            compressed_bytes, reply_token, group_id = task
-            with ApiClient(configuration) as api_client:
-                line_bot_api = MessagingApi(api_client)
-
-                prompt_text = (
-                    "Hãy trích xuất chính xác toàn bộ chữ và số viết tay xuất hiện trong ảnh theo các quy tắc:\n"
-                    "1. GHI NGUYÊN BẢN: Trong ảnh có chữ gì/số gì thì ghi ra đúng chính xác như vậy. KHÔNG tự ý suy luận, KHÔNG tách dòng, KHÔNG diễn giải thành từ khác.\n"
-                    "2. BỎ HOÀN TOÀN ngày tháng năm ở đầu tờ giấy (nếu có).\n"
-                    "3. DÒNG CUỐI CÙNG BẮT BUỘC: Nếu trong ảnh có con số tổng kết quả (ví dụ 1800, 215...) thì ghi dòng cuối dạng 'TỔNG: [con số đó]'. Nếu không có, hãy tự cộng tổng các giá trị tiền trong ảnh và ghi 'TỔNG: [con số]'.\n"
-                    "4. Không viết lời chào hay bất kỳ văn bản giải thích nào thêm."
-                )
-
-                response = ai_client.models.generate_content(
-                    model='gemini-flash-latest',
-                    contents=types.Content(
-                        parts=[
-                            types.Part.from_bytes(data=compressed_bytes, mime_type='image/jpeg'),
-                            types.Part.from_text(text=prompt_text)
-                        ]
-                    )
-                )
-
-                extracted_text = response.text if (response and response.text) else ""
-
-                match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
-                if match:
-                    add_amount(group_id, float(match.group(1)))
-                else:
-                    numbers = re.findall(r'-?\d+(?:\.\d+)?', extracted_text)
-                    if numbers:
-                        add_amount(group_id, float(numbers[-1]))
-
-                # Gửi phản hồi qua LINE (Nếu hết hạn token sẽ bị bắt lỗi ở block try lớn)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[TextMessage(text=extracted_text)]
-                    )
-                )
-        except Exception as e:
-            print(f"Bỏ qua lỗi rớt token hoặc xử lý: {e}")
-        finally:
-            task_queue.task_done()
-
-threading.Thread(target=queue_worker, daemon=True).start()
-
-def prepare_image(message_id, reply_token, group_id):
+def process_single_image(message_id, reply_token, group_id):
     try:
         with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
             blob_api = MessagingApiBlob(api_client)
+            
             image_bytes = blob_api.get_message_content(message_id=message_id)
 
+            # Nén ảnh nhẹ để truyền tải cực nhanh
             img = Image.open(BytesIO(image_bytes))
-            img.thumbnail((450, 450))
+            img.thumbnail((500, 500))
             output = BytesIO()
             img.save(output, format="JPEG", quality=40)
-            
-            task_queue.put((output.getvalue(), reply_token, group_id))
+            compressed_image_bytes = output.getvalue()
+
+            # PROMPT ĐỌC NGUYÊN BẢN 100%
+            prompt_text = (
+                "Hãy trích xuất chính xác toàn bộ chữ và số viết tay xuất hiện trong ảnh theo các quy tắc:\n"
+                "1. GHI NGUYÊN BẢN: Trên giấy có chữ gì, ký tự gì, phép tính gì thì ghi ra ĐÚNG 100% NHƯ VẬY. KHÔNG tự ý suy luận, KHÔNG đổi chữ viết tắt thành từ đầy đủ, KHÔNG tự thêm bớt từ.\n"
+                "2. BỎ HOÀN TOÀN ngày tháng năm ở đầu tờ giấy (nếu có).\n"
+                "3. DÒNG CUỐI CÙNG BẮT BUỘC: Nếu trong ảnh có con số tổng kết quả (ví dụ 1800, 215...) thì ghi dòng cuối dạng 'TỔNG: [con số đó]'. Nếu không có, hãy tự cộng tổng các giá trị tiền trong ảnh và ghi 'TỔNG: [con số]'.\n"
+                "4. Không viết lời chào hay bất kỳ văn bản giải thích nào thêm."
+            )
+
+            response = ai_client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=types.Content(
+                    parts=[
+                        types.Part.from_bytes(
+                            data=compressed_image_bytes,
+                            mime_type='image/jpeg'
+                        ),
+                        types.Part.from_text(text=prompt_text)
+                    ]
+                )
+            )
+
+            extracted_text = response.text if (response and response.text) else ""
+
+            match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
+            if match:
+                sub_total = float(match.group(1))
+                add_amount(group_id, sub_total)
+            else:
+                numbers = re.findall(r'-?\d+(?:\.\d+)?', extracted_text)
+                if numbers:
+                    add_amount(group_id, float(numbers[-1]))
+
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[TextMessage(text=extracted_text)]
+                )
+            )
     except Exception as e:
-        print(f"Lỗi tải ảnh: {e}")
+        print(f"Lỗi xử lý ảnh: {e}")
 
 @handler.add(MessageEvent)
 def handle_message(event):
     group_id = getattr(event.source, 'group_id', None) or getattr(event.source, 'user_id', 'default_user')
 
+    # 1. XỬ LÝ LỆNH TỔNG CHỮ HOẶC TAG BOT
     if isinstance(event.message, TextMessageContent):
         text_msg = event.message.text.lower().strip()
         
@@ -175,8 +164,9 @@ def handle_message(event):
                 )
         return
 
+    # 2. XỬ LÝ GỬI HÌNH ẢNH (CHẠY SONG SONG TRÁNH QUÁ HẠN REPLY TOKEN)
     elif isinstance(event.message, ImageMessageContent):
-        threading.Thread(target=prepare_image, args=(event.message.id, event.reply_token, group_id)).start()
+        executor.submit(process_single_image, event.message.id, event.reply_token, group_id)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
