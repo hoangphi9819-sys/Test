@@ -1,7 +1,8 @@
 import os
 import re
 import sqlite3
-import concurrent.futures
+import queue
+import threading
 from io import BytesIO
 from PIL import Image
 from flask import Flask, request, abort
@@ -21,8 +22,8 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Thread pool xử lý nhiều ảnh song song
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+# HÀNG ĐỢI TUẦN TỰ
+image_queue = queue.Queue()
 
 # DATABASE LƯU SỐ TIỀN CỦA CÁC ẢNH
 def init_db():
@@ -75,12 +76,68 @@ def callback():
         abort(400)
     return 'OK'
 
-def process_single_image(message_id, reply_token, group_id):
+# LUỒNG XỬ LÝ HÀNG ĐỢI LẦN LƯỢT TỪNG ẢNH THEO THỨ TỰ
+def process_queue_worker():
+    while True:
+        task = image_queue.get()
+        if task is None:
+            break
+
+        compressed_image_bytes, reply_token, group_id = task
+        try:
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+
+                prompt = (
+                    "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
+                    "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
+                    "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục từ trên xuống dưới.\n"
+                    "3. QUY TẮC ĐỀ GOM: Dạng '45-54=100k' nghĩa là tổng các số đó là 100k.\n"
+                    "4. Giữ nguyên số 0 đằng trước nếu có (01, 02...).\n"
+                    "5. BẮT BUỘC DÒNG CUỐI CÙNG PHẢI GHI ĐÚNG CÚ PHÁP: 'TỔNG: [con số tổng tiền cả ảnh]' (Ví dụ: TỔNG: 1800).\n"
+                    "6. Không viết lời chào hay giải thích thừa."
+                )
+
+                image_part = genai.types.Part.from_bytes(
+                    data=compressed_image_bytes,
+                    mime_type='image/jpeg'
+                )
+
+                response = ai_client.models.generate_content(
+                    model='gemini-flash-latest',
+                    contents=[image_part, prompt]
+                )
+
+                extracted_text = response.text if (response and response.text) else ""
+
+                match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
+                if match:
+                    sub_total = float(match.group(1))
+                    add_amount(group_id, sub_total)
+                else:
+                    numbers = re.findall(r'-?\d+(?:\.\d+)?', extracted_text)
+                    if numbers:
+                        add_amount(group_id, float(numbers[-1]))
+
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text=extracted_text)]
+                    )
+                )
+        except Exception as e:
+            print(f"Lỗi xử lý tuần tự: {e}")
+        finally:
+            image_queue.task_done()
+
+# Khởi chạy Worker ngầm xử lý hàng đợi
+threading.Thread(target=process_queue_worker, daemon=True).start()
+
+# Hàm lấy và nén ảnh nhanh trước khi đưa vào hàng đợi
+def prepare_and_enqueue_image(message_id, reply_token, group_id):
     try:
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
             blob_api = MessagingApiBlob(api_client)
-            
             image_bytes = blob_api.get_message_content(message_id=message_id)
 
             img = Image.open(BytesIO(image_bytes))
@@ -89,45 +146,10 @@ def process_single_image(message_id, reply_token, group_id):
             img.save(output, format="JPEG", quality=45)
             compressed_image_bytes = output.getvalue()
 
-            prompt = (
-                "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
-                "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
-                "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục từ trên xuống dưới.\n"
-                "3. QUY TẮC ĐỀ GOM: Dạng '45-54=100k' nghĩa là tổng các số đó là 100k.\n"
-                "4. Giữ nguyên số 0 đằng trước nếu có (01, 02...).\n"
-                "5. BẮT BUỘC DÒNG CUỐI CÙNG PHẢI GHI ĐÚNG CÚ PHÁP: 'TỔNG: [con số tổng tiền cả ảnh]' (Ví dụ: TỔNG: 1800).\n"
-                "6. Không viết lời chào hay giải thích thừa."
-            )
-
-            image_part = genai.types.Part.from_bytes(
-                data=compressed_image_bytes,
-                mime_type='image/jpeg'
-            )
-
-            response = ai_client.models.generate_content(
-                model='gemini-flash-latest',
-                contents=[image_part, prompt]
-            )
-
-            extracted_text = response.text if (response and response.text) else ""
-
-            match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
-            if match:
-                sub_total = float(match.group(1))
-                add_amount(group_id, sub_total)
-            else:
-                numbers = re.findall(r'-?\d+(?:\.\d+)?', extracted_text)
-                if numbers:
-                    add_amount(group_id, float(numbers[-1]))
-
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[TextMessage(text=extracted_text)]
-                )
-            )
+            # Đưa vào hàng đợi để xử lý tuần tự từng tấm
+            image_queue.put((compressed_image_bytes, reply_token, group_id))
     except Exception as e:
-        print(f"Lỗi xử lý ảnh: {e}")
+        print(f"Lỗi tải ảnh: {e}")
 
 @handler.add(MessageEvent)
 def handle_message(event):
@@ -160,9 +182,12 @@ def handle_message(event):
                 )
         return
 
-    # 2. XỬ LÝ GỬI HÌNH ẢNH
+    # 2. XỬ LÝ GỬI HÌNH ẢNH (TẢI NHANH VÀ XẾP HÀNG TUẦN TỰ)
     elif isinstance(event.message, ImageMessageContent):
-        executor.submit(process_single_image, event.message.id, event.reply_token, group_id)
+        threading.Thread(
+            target=prepare_and_enqueue_image, 
+            args=(event.message.id, event.reply_token, group_id)
+        ).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
