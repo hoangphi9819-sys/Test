@@ -110,7 +110,7 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
-                # Nén ảnh nhẹ (550x550, quality=50) giúp truyền dữ liệu siêu tốc
+                # Nén ảnh siêu nhẹ (550x550, quality=50) để gửi dữ liệu cực nhanh
                 img = Image.open(BytesIO(image_bytes))
                 img.thumbnail((550, 550))
                 output = BytesIO()
@@ -120,11 +120,10 @@ def handle_message(event):
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
                     "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
-                    "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục.\n"
-                    "3. QUY TẮC ĐỀ GOM: Nếu gặp dạng như 'Đề 45, 54 = 100k' hoặc '45-54=100k', hiểu là TỔNG TIỀN CỦA CÁC SỐ ĐÓ LÀ 100k (không tự ý tính nhân lên thành 200k).\n"
+                    "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục từ trên xuống dưới.\n"
+                    "3. QUY TẮC ĐỀ GOM: Dạng '45-54=100k' nghĩa là tổng các số đó là 100k.\n"
                     "4. Giữ nguyên số 0 đằng trước nếu có (01, 02...).\n"
-                    "5. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
-                    "   TỔNG: [Số tiền tổng của cả bức ảnh]\n"
+                    "5. BẮT BUỘC DÒNG CUỐI CÙNG PHẢI GHI ĐÚNG CÚ PHÁP: 'TỔNG: [con số tổng tiền cả ảnh]' (Ví dụ: TỔNG: 1800).\n"
                     "6. Không viết lời chào hay giải thích thừa."
                 )
 
@@ -140,11 +139,16 @@ def handle_message(event):
 
                 extracted_text = response.text if (response and response.text) else ""
 
-                # Trích xuất tổng tiền để lưu vào DB
+                # Trích xuất tổng tiền an toàn (Tránh Crash nếu AI thiếu chữ TỔNG)
                 match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
                 if match:
                     sub_total = float(match.group(1))
                     add_amount(group_id, sub_total)
+                else:
+                    # Nếu không tìm thấy chữ TỔNG, tự quét tìm con số cuối cùng trong bài
+                    numbers = re.findall(r'-?\d+(?:\.\d+)?', extracted_text)
+                    if numbers:
+                        add_amount(group_id, float(numbers[-1]))
 
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
