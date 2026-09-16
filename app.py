@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image
 from flask import Flask, request, abort
 from google import genai
+from google.genai import types
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, MessagingApiBlob, ReplyMessageRequest, TextMessage
@@ -76,7 +77,7 @@ def callback():
         abort(400)
     return 'OK'
 
-# LUỒNG XỬ LÝ HÀNG ĐỢI LẦN LƯỢT TỪNG ẢNH THEO THỨ TỰ
+# LUỒNG XỬ LÝ HÀNG ĐỢI TUẦN TỰ
 def process_queue_worker():
     while True:
         task = image_queue.get()
@@ -88,7 +89,7 @@ def process_queue_worker():
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
 
-                prompt = (
+                prompt_text = (
                     "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
                     "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
                     "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục từ trên xuống dưới.\n"
@@ -98,14 +99,18 @@ def process_queue_worker():
                     "6. Không viết lời chào hay giải thích thừa."
                 )
 
-                image_part = genai.types.Part.from_bytes(
-                    data=compressed_image_bytes,
-                    mime_type='image/jpeg'
-                )
-
+                # Gọi API theo chuẩn types.Content mới nhất để tránh lỗi Function Calling
                 response = ai_client.models.generate_content(
                     model='gemini-flash-latest',
-                    contents=[image_part, prompt]
+                    contents=types.Content(
+                        parts=[
+                            types.Part.from_bytes(
+                                data=compressed_image_bytes,
+                                mime_type='image/jpeg'
+                            ),
+                            types.Part.from_text(text=prompt_text)
+                        ]
+                    )
                 )
 
                 extracted_text = response.text if (response and response.text) else ""
@@ -130,10 +135,8 @@ def process_queue_worker():
         finally:
             image_queue.task_done()
 
-# Khởi chạy Worker ngầm xử lý hàng đợi
 threading.Thread(target=process_queue_worker, daemon=True).start()
 
-# Hàm lấy và nén ảnh nhanh trước khi đưa vào hàng đợi
 def prepare_and_enqueue_image(message_id, reply_token, group_id):
     try:
         with ApiClient(configuration) as api_client:
@@ -146,7 +149,6 @@ def prepare_and_enqueue_image(message_id, reply_token, group_id):
             img.save(output, format="JPEG", quality=45)
             compressed_image_bytes = output.getvalue()
 
-            # Đưa vào hàng đợi để xử lý tuần tự từng tấm
             image_queue.put((compressed_image_bytes, reply_token, group_id))
     except Exception as e:
         print(f"Lỗi tải ảnh: {e}")
@@ -182,7 +184,7 @@ def handle_message(event):
                 )
         return
 
-    # 2. XỬ LÝ GỬI HÌNH ẢNH (TẢI NHANH VÀ XẾP HÀNG TUẦN TỰ)
+    # 2. XỬ LÝ GỬI HÌNH ẢNH
     elif isinstance(event.message, ImageMessageContent):
         threading.Thread(
             target=prepare_and_enqueue_image, 
