@@ -76,21 +76,21 @@ def callback():
         abort(400)
     return 'OK'
 
+# WORKER AN TOÀN - KHÔNG BAO GIỜ BỊ DỪNG HOẠT ĐỘNG
 def queue_worker():
     while True:
         task = task_queue.get()
         if task is None:
             break
         
-        compressed_bytes, reply_token, group_id = task
         try:
+            compressed_bytes, reply_token, group_id = task
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
 
-                # PROMPT ĐỌC NGUYÊN BẢN 100% KHÔNG TỰ SUY LUẬN
                 prompt_text = (
                     "Hãy trích xuất chính xác toàn bộ chữ và số viết tay xuất hiện trong ảnh theo các quy tắc:\n"
-                    "1. GHI NGUYÊN BẢN: Trong ảnh có chữ gì/số gì thì ghi ra đúng chính xác như vậy (ví dụ 'L:16=5đ/ Đ;45 -54=100k'). KHÔNG tự ý suy luận, KHÔNG tách dòng, KHÔNG diễn giải thành từ khác.\n"
+                    "1. GHI NGUYÊN BẢN: Trong ảnh có chữ gì/số gì thì ghi ra đúng chính xác như vậy. KHÔNG tự ý suy luận, KHÔNG tách dòng, KHÔNG diễn giải thành từ khác.\n"
                     "2. BỎ HOÀN TOÀN ngày tháng năm ở đầu tờ giấy (nếu có).\n"
                     "3. DÒNG CUỐI CÙNG BẮT BUỘC: Nếu trong ảnh có con số tổng kết quả (ví dụ 1800, 215...) thì ghi dòng cuối dạng 'TỔNG: [con số đó]'. Nếu không có, hãy tự cộng tổng các giá trị tiền trong ảnh và ghi 'TỔNG: [con số]'.\n"
                     "4. Không viết lời chào hay bất kỳ văn bản giải thích nào thêm."
@@ -116,6 +116,7 @@ def queue_worker():
                     if numbers:
                         add_amount(group_id, float(numbers[-1]))
 
+                # Gửi phản hồi qua LINE (Nếu hết hạn token sẽ bị bắt lỗi ở block try lớn)
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=reply_token,
@@ -123,7 +124,7 @@ def queue_worker():
                     )
                 )
         except Exception as e:
-            print(f"Lỗi worker: {e}")
+            print(f"Bỏ qua lỗi rớt token hoặc xử lý: {e}")
         finally:
             task_queue.task_done()
 
