@@ -20,7 +20,7 @@ configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# KHỞI TẠO DATABASE LƯU SỐ TIỀN CÁC ẢNH
+# DATABASE LƯU SỐ TIỀN CỦA CÁC ẢNH
 def init_db():
     conn = sqlite3.connect('totals.db')
     c = conn.cursor()
@@ -110,20 +110,21 @@ def handle_message(event):
                 blob_api = MessagingApiBlob(api_client)
                 image_bytes = blob_api.get_message_content(message_id=event.message.id)
 
+                # Nén ảnh 700x700 để chữ rõ nét hơn nhưng dung lượng vẫn nhẹ
                 img = Image.open(BytesIO(image_bytes))
-                img.thumbnail((500, 500))
+                img.thumbnail((700, 700))
                 output = BytesIO()
-                img.save(output, format="JPEG", quality=55)
+                img.save(output, format="JPEG", quality=65)
                 compressed_image_bytes = output.getvalue()
 
-                # PROMPT ĐÃ ĐƯỢC CỦNG CỐ KHÔNG TÍNH TỔNG LẺ CỘT
+                # Prompt nới lỏng thời gian suy luận giúp AI đọc nhanh < 4 giây
                 prompt = (
                     "Hãy đọc và phân tích dữ liệu trong ảnh theo các quy tắc:\n"
                     "1. Giữ nguyên số 0 ở đầu nếu có (01, 02...).\n"
-                    "2. Trích xuất chính xác chi tiết từng dòng hoặc từng cột theo thứ tự từ trên xuống dưới.\n"
-                    "3. TUYỆT ĐỐI KHÔNG ghi 'Tổng cột 1', 'Tổng cột 2' hay cộng tổng riêng từng phần.\n"
-                    "4. Chỉ tính tổng toàn bộ các số tiền trên bức ảnh và kết thúc BẮT BUỘC ở dòng cuối cùng theo dạng:\n"
-                    "   TỔNG: [Tổng số tiền của cả bức ảnh]\n"
+                    "2. Trích xuất theo thứ tự từng cột từ trên xuống dưới (đọc xong cột 1 rồi mới sang cột 2, cột 3).\n"
+                    "3. Lấy con số viết tay tại ô 合計 (Tổng cộng) ở góc dưới tờ giấy để làm tổng tiền.\n"
+                    "4. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
+                    "   TỔNG: [Số tiền lấy từ ô 合計 hoặc tổng cộng các mục]\n"
                     "5. Không viết lời chào hay giải thích thừa."
                 )
 
@@ -139,7 +140,7 @@ def handle_message(event):
 
                 extracted_text = response.text if (response and response.text) else ""
 
-                # Trích xuất tổng tiền cả bức ảnh để lưu vào DB
+                # Trích xuất tổng tiền để lưu vào DB
                 match = re.search(r'TỔNG:\s*(-?\d+(?:\.\d+)?)', extracted_text, re.IGNORECASE)
                 if match:
                     sub_total = float(match.group(1))
