@@ -75,7 +75,7 @@ def callback():
 def handle_message(event):
     group_id = getattr(event.source, 'group_id', None) or getattr(event.source, 'user_id', 'default_user')
 
-    # 1. XỬ LÝ KHI GÕ LỆNH TỔNG CHỮ OR TAG BOT
+    # 1. XỬ LÝ KHI GÕ LỆNH TỔNG CHỮ HOẶC TAG BOT
     if isinstance(event.message, TextMessageContent):
         text_msg = event.message.text.lower().strip()
         
@@ -118,11 +118,13 @@ def handle_message(event):
 
                 prompt = (
                     "Hãy phân tích và đọc toàn bộ chữ/số viết tay trong ảnh theo các quy tắc:\n"
-                    "1. Giữ nguyên các số 0 ở đầu nếu có (ví dụ: 01, 02...).\n"
-                    "2. ĐỌC THEO DÒNG NGANG (Từ trái sang phải): Ghép tất cả các thông tin viết tay trên cùng 1 dòng thành 1 câu/phép tính hoàn chỉnh (ví dụ: Lô 26 x 5 = 1300). CẤM phân tách thành danh sách kiểu 'Cột 品名', 'Cột 數量'.\n"
-                    "3. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
+                    "1. BỎ HOÀN TOÀN thông tin ngày tháng năm ở đầu tờ giấy.\n"
+                    "2. KHÔNG ghi tiền tố 'Dòng 1:', 'Dòng 2:'... Chỉ liệt kê trực tiếp nội dung các mục.\n"
+                    "3. QUY TẮC ĐỀ GOM: Nếu gặp dạng như 'Đề 45, 54 = 100k' hoặc '45-54=100k', hiểu là TỔNG TIỀN CỦA CÁC SỐ ĐÓ LÀ 100k (không tự ý tính nhân nhân lên thành 200k).\n"
+                    "4. Giữ nguyên số 0 đằng trước nếu có (01, 02...).\n"
+                    "5. ĐỊNH DẠNG BẮT BUỘC DÒNG CUỐI:\n"
                     "   TỔNG: [Số tiền tổng của cả bức ảnh]\n"
-                    "4. Không viết lời chào hay giải thích thừa."
+                    "6. Không viết lời chào hay giải thích thừa."
                 )
 
                 image_part = genai.types.Part.from_bytes(
